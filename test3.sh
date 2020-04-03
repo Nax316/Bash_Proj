@@ -15,68 +15,77 @@ declare j=0
 
 #-------------------------------------------------------------#
 
-#fetching the module name..........
+
+#------------------COMPILATION OF VERILOG FILE----------------#
+
+iverilog $1 2> c
+size=$(ls -l c | cut -d " " -f5)
+
+if [[ ! $size -eq 0 ]];then
+	cat c
+	rm c
+	exit 1
+fi
+
+#-------------------------------------------------------------#
+
+
+#--------------------FETCHING THE MODULE NAME--------------------#
 
 mod1=$(egrep -o '\<module\> *([a-Z0=9]+)' $1 | sed 's/module *//g')
 
-#.....................
+#----------------------------------------------------------------#
 
 sed -r ':x;${s/\n/ /g};N;bx'  $1  | sed -r -e   's/\(//g' -e 's/\)//g'  | sed  -r  -e  's/(.);/\1 ;/g'    -e 's/(\]) *([a-Z]*)/\1\2/g' -e  's/ *, */,/g' -e 's/reg//g' -e 's/logic//g' -e 's/wire//g'  >  temp_file2
 
-#.........../////....feching the input port..//////..................
+
+
+#-------------------FETCHING THE INPUT PORT-----------------------#
 
 
 fil=$(sed -r 's/ *input/\n input/g' temp_file2  | sed -r 's/(\[[0-9]:[0-9]\])([a-Z]+),([a-Z]+)/\1\2,\1\3/g')
 
 IFS=$' \n ,'
 p=0
-
 for i in $ $fil;do
-
 	if [[ $i =~ input  ]];then
 		p=1
 		continue
-
 	fi
-
 	if [[ $i =~  output ]] || [[ $i =~ ';' ]] ;then
 		p=0
 		continue
-
 	elif [[ p -eq 1 ]];then
 
-		#remove leading and trilling edge................
+		#...............Remove leading and trailing edge................
 
 		ii=$(echo $i |sed -r -e  's/^ *//g' -e 's/ *$//g' )
-
 		INPUT_PORT_ARRAY[k++]=$ii
 
-		#............store clock and reset..................
+		#...................Store clock and reset..................
 
 		if [[ $ii =~ (clk|clock|CLOCK|CLK|Clk|Clock)[a-Z0-9_]* ]] ;then
-
 			c=$ii
 		fi
 
 		if [[ $ii =~ (rst|reset|RST|RESET|Reset|Rst)[a-Z0-9_]* ]] ;then
-
 			rt=$ii
 		fi
 
 		if [[ $ii =~ (valid|enable|VALID|ENABLE|Valid|Enable)[a-Z0-9_]* ]]  || [[ $ii =~ (EN|En|en)[0-9]* ]];then
-
 			en=$ii
 		fi
 	fi
 done
-#.............///////////end of fetching input port///....................
+
+#--------------------END OF FETCHING INPUT PORT------------------------#
 
 
-#............//////////fetching the output port/////////...............
+#--------------------FETCHING THE OUTPUT PORT--------------------------#
 
 fil1=$(sed -r 's/ *output/\n output/g' temp_file2  |  sed -r 's/(\[[0-9]:[0-9]\])([a-Z]+),([a-Z]+)/\1\2,\1\3/g')
+
 IFS=$' \n ,'
-#cat temp_file1
 q=0
 for i in $fil1 ;do
 	if [[ $i =~ output  ]];then
@@ -93,13 +102,13 @@ for i in $fil1 ;do
 	fi
 done
 
-#...................////end of fetching output port/////.............
+#--------------------END OF FETCHING OUTPUT PORT----------------------#
 
 
 
-#......................///////creating class transaction////////...............
+#--------------------CREATING CLASS TRANSACTION--------------------#
 
-#....cheak file exist or not.............
+#....CHECK FILE EXIST OR NOT.............
 
 if test -f "transaction.sv";then
 	rm transaction.sv
@@ -116,16 +125,15 @@ for i in "${INPUT_PORT_ARRAY[@]}";do
 		continue
 	else
 		echo "rand bit $i;" >> transaction.sv
-
 	fi
 done
 
 for i in "${OUTPUT_PORT_ARRAY[@]}";do
-
 	echo "  bit $i;" >> transaction.sv
 done
 
-#.............................Adding Constraints..........................
+
+#............................ADDING CONSTRAINTS..........................
 
 echo "Enter y to add  constraints else n"
 read -r OPTION
@@ -156,7 +164,8 @@ if [[ $OPTION = 'y' ]]; then
 	fi
 fi
 
-#............................................................
+#........................................................................
+
 cat<<EOT >>transaction.sv
 
 function void display(string name);
@@ -172,7 +181,6 @@ for i in "${INPUT_PORT_ARRAY[@]}";do
 		continue
 	else
 		gg=$(echo $i | sed -r 's/\[.*\](.*)/\1/g')
-
 		echo  "	\$display(\"- $gg = %0d\",$gg);" >> transaction.sv
 	fi
 
@@ -181,7 +189,6 @@ done
 
 for i in "${OUTPUT_PORT_ARRAY[@]}";do
 	gg1=$(echo $i | sed -r 's/\[.*\](.*)/\1/g')
-
 	echo  "	\$display(\"- $gg1 = %0d\",$gg1);" >> transaction.sv
 done
 
@@ -190,13 +197,12 @@ cat<<EOT >>transaction.sv
     \$display("-------------------------");
   endfunction
 endclass
-
 EOT
 
-#.............end 0f transaction class..................
+#--------------------------END 0F TRANSACTION CLASS-------------------------#
 
 
-#...............//////creating of genarator class///////////.................
+#----------------------CREATING OF GENARATOR CLASS---------------------------#
 
 cat<<EOT >>generator.sv
 
@@ -232,16 +238,18 @@ endclass
 
 EOT
 
-#..................end of generator class..................
+#------------------------END OF GENERATOR CLASS---------------------------------#
 
 
-#.................////..creating of interface..///////.............
+#------------------------CREATING OF INTERFACE----------------------------------#
 
-#....check file exist or not.............
+#...........CHECK FILE EXIST OR NOT.............
 
 if test -f "interface.sv";then
 	rm interface.sv
 fi
+
+#...............................................
 
 
 echo "interface intf(input logic $c,$rt);" >> interface.sv
@@ -251,17 +259,16 @@ echo   "//declaring the signals" >>interface.sv
 [[ ! -z $en  ]] && echo "logic $en" >> interface.sv
 
 	for i in "${INPUT_PORT_ARRAY[@]}";do
-
 		if [[ $i == $c  ]] || [[ $i == $rt ]]  || [[ $i == $en  ]];then
 			continue
 		else
-
-
 			echo  " logic $i;" >> interface.sv
 		fi
-
-
 	done
+
+
+#............INSERTING CLOCKING BLOCK AND MODPORT...............
+
 
 cat <<EOT >> interface.sv
 
@@ -269,11 +276,13 @@ clocking driver_cb(posedge $c);
 	default input #1 output #1;
 EOT
 
+
 for i in ${INPUT_PORT_ARRAY[@]}; do
 	if [[ ! $i == $c || $i == $rt  ]]; then
 	echo "	output	`echo $i | sed 's/\[.*\]//'`;" >> interface.sv
 fi
 done
+
 
 for i in ${OUTPUT_PORT_ARRAY[@]};do
 	echo "	input	`echo $i | sed 's/\[.*\]//'`;" >> interface.sv
@@ -287,10 +296,9 @@ modport DRIVER(clocking Driver_cb, input $c, $rt);
 endinterface
 EOT
 	
-#..................end of interface.////..............
+#---------------------------END OF INTERFACE-------------------------------#
 
-#..........................................Driver...........................................................
-
+#-----------------------CREATING DRIVER CLASS---------------------------#
 
 cat << EOT > driver.sv
 \`define DRIV_IF vif.DRIVER.driver_cb
@@ -311,8 +319,9 @@ class driver;
 		\$display("Driver reset started");
 EOT
 
-IFS=$'\n'
+#................MAKING DRIVER RESET AND MAIN..................
 
+IFS=$'\n'
 for i in ${INPUT_PORT_ARRAY[@]}; do  
 	if [[ ! $i == $c || $i == $rt ]];then 
 		echo "		`echo $i | sed 's/\[.*\]//'` <= 0;" >> driver.sv
@@ -329,6 +338,8 @@ cat << EOT >> driver.sv
 			gen2driv.get(tr);
 			@(posedge vif.DRIVER.$c);
 EOT
+.
+#....................DRIVING INPUT SIGNALS......................
 
 for i in ${INPUT_PORT_ARRAY[@]};do
 	i=`echo $i |  sed  's/\[.*\]//'`
@@ -336,6 +347,11 @@ for i in ${INPUT_PORT_ARRAY[@]};do
 		[[ ! $i == $en ]] && echo "			\`DRIV_IF.$i <= tr.$i;" >> driver.sv || echo "			\`DRIV_IF.$i <= tr.$i;" >> driver.sv
 	fi
 done
+
+#...............................................................
+
+
+#...................DRIVING OUTPUT SIGNALS......................
 
 cat << EOT >> driver.sv
 			@(posedge vif.DRIVER.$c);
@@ -346,6 +362,9 @@ for i in ${OUTPUT_PORT_ARRAY[@]};do
 	echo "			tr.$i = \`DRIV_IF.$i" >> driver.sv
 done
 
+#..............................................................
+
+
 cat << EOT >> driver.sv
 			tr.display("[ Driver ]");
 			transactions++;
@@ -354,15 +373,18 @@ cat << EOT >> driver.sv
 endclass
 EOT
 
-#......................................................END OF DRIVER....................................................................
-#...............////////////creating environment class////////............
+#-------------------------------------END OF DRIVER-------------------------------------#
 
-#....cheak file exist or not.............
+
+#------------------------CREATING ENVIRONMENT CLASS-------------------------------------#
+
+#...........CHECK FILE EXIST OR NOT.............
 
 if test -f "environment.sv";then
 	rm environment.sv
 fi
 
+#...............................................
 
 cat<<EOT >>environment.sv
 \`include "transaction.sv"
@@ -432,17 +454,21 @@ endclass
 
 EOT
 
-#.................end of environment class.................
+#---------------------------END OF ENVIRONMENT CLASS-----------------------------#
 
 
 
-#.....................................//////// Random Test ////////................................
+#-------------------------------CREATING RANDOM TEST-----------------------------#
 
-#....cheak file exist or not.............
+
+#..........CHECK FILE EXIST OR NOT.............
 
 if test -f "randam_test.sv";then
 	rm randam_test.sv
 fi
+
+#.............................................
+
 
 cat << EOT > random_test.sv
 \`include "environment.sv"
@@ -460,15 +486,20 @@ program test(intf in);
 endprogram
 
 EOT
-#...............................end of randam Test ................................"
 
-#.........................//////creating  top_test_bench///////...............
+#-----------------------------END OF RANDAM TEST--------------------------------#
 
-#....cheak file exist or not.............
+
+#------------------------CREATING TOP_TEST_BENCH--------------------------------#
+
+
+#...........CHECK FILE EXIST OR NOT.............
 
 if test -f "top_test_bench.sv";then
         rm top_test_bench.sv
 fi
+
+#...............................................
 
 
 cat <<EOT >>top_test_bench.sv
@@ -508,25 +539,23 @@ EOT
 
 echo  "DUT $mod1 (" >>top_test_bench.sv
 
-#..................
 for i in "${INPUT_PORT_ARRAY[@]}";do
         g=$(echo $i | sed -r 's/\[.*\](.*)/\1/g')
         echo ".$g(i_intf.$g)," >> top_test_bench.sv
 done
 
-g11=$(echo "${#OUTPUT_PORT_ARRAY[*]}")
-for i in "${OUTPUT_PORT_ARRAY[@]}";do
 
+g11=$(echo "${#OUTPUT_PORT_ARRAY[*]}")
+
+for i in "${OUTPUT_PORT_ARRAY[@]}";do
         g1=$(echo $i | sed -r 's/\[.*\](.*)/\1/g')
         g11=$g11-1
-
         echo -n  ".$g1(i_intf.$g1)" >> top_test_bench.sv
-        if [[ $g11 -gt 0 ]];then
-
+        
+	if [[ $g11 -gt 0 ]];then
                 echo "," >> top_test_bench.sv
         fi
 done
-
 
 echo  " );" >> top_test_bench.sv
 
@@ -542,7 +571,6 @@ endmodulenclude "random_test.sv"
 EOT
 
 
-#.........................//////creating  top_test_bench///////...............
+#---------------------------------CREATING  TOP_TEST_BENCH----------------------------#
 
-echo "hi"
-
+echo "Script done"
